@@ -1,0 +1,306 @@
+import numpy as np
+import copy
+from gymnasium.spaces import Discrete, Box
+# from get_config import get_6_6_config, get_3_4_config, get_26_10_config, get_10_10_config
+from env_util import get_time, check_all_cons, get_available_actions
+
+
+class MSTTLE:
+    def __init__(self, _cfg, n_bar=2, sample_size=200):
+
+        self.cfg = _cfg
+        self.n_agents = self.cfg.numT
+        self.optional_actions = self.cfg.ava_actions
+        self._action_shape = len(self.optional_actions)
+
+        # 多步搜索参数
+        self.n_bar = n_bar  # 树搜索最大深度
+        self.sample_size = sample_size  # 采样次数（用于大规模实例）
+
+        self.stop_plan = np.array(self.cfg.stop_plan)
+        assert len(self.stop_plan) == self.n_agents
+
+        self.shuffled_stop_plan = None
+
+        self.use_action_mask = False
+
+        self.state, _, _ = self.reset()
+
+        self._obs_shape = (len(self.state[0]),)
+
+        self.penalty = self.optional_actions[-1] * 10
+
+        self.observation_space = [Box(low=float("-inf"), high=float("inf"), shape=self._obs_shape,
+                                      dtype=np.float32) for _ in range(self.n_agents)]
+        self.share_observation_space = self.observation_space
+        self.action_space = [Discrete(self._action_shape) for _ in range(self.n_agents)]
+
+        self.current_station = 1
+
+        self.checkCons = np.array([0 for _ in range(self.n_agents)])
+
+        self.test_mode = False
+
+        self.stop_info = []
+        self.time_slots = []
+        self.time_slots.append(self.cfg.startTime)
+        self.chosen_action = []
+        self.accumulated_reward = np.zeros(self.n_agents)
+
+    def reset(self, seed=None, options=None):
+
+        self.current_station = 1
+
+        self.stop_info = []
+        self.time_slots = []
+        self.time_slots.append(self.cfg.startTime)
+        self.chosen_action = []
+        self.accumulated_reward = np.zeros(self.n_agents)
+
+        ifStop = [1 for _ in range(self.cfg.numT)]
+
+        state = []
+        for i in range(self.cfg.numT):
+            time_s = self.cfg.startTime[i] / self.cfg.timeZone
+            direction_s = self.cfg.direction[i]
+            stop_s = ifStop[i]
+            state.append(np.array((time_s, direction_s, stop_s)))
+
+        if self.use_action_mask is True:
+            available_action = get_available_actions(self.n_agents, self.optional_actions, self.shuffled_stop_plan.T[0])
+        else:
+            available_action = np.ones((self.n_agents, len(self.optional_actions)))
+
+        return state, state, available_action
+
+    def _simulate_one_step(self, state, action, station_idx):
+        """
+        模拟执行一步状态转移，返回约束检查结果和转移后的状态信息
+        """
+        tmp_state = self._obs_wrapper_for_mat(state)
+        ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr = \
+            get_time(tmp_state, action, station_idx, self.cfg)
+
+        check = check_all_cons((ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr),
+                               self.cfg.timeZone, self.n_agents)
+
+        return check, ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr
+
+    def _build_next_state(self, next_dep, ifStopNext):
+        """
+        从转移结果构建下一个状态
+        """
+        state = []
+        for i in range(self.n_agents):
+            time_s = next_dep[i] / self.cfg.timeZone
+            direction_s = self.cfg.direction[i]
+            stop_s = ifStopNext[i]
+            state.append(np.array((time_s, direction_s, stop_s), dtype=np.float32))
+        return state
+
+    def _n_step_tree_search(self, state, action, station_idx, depth):
+        """
+        执行n步树搜索预测，返回每个agent的冲突概率rho
+
+        采用随机采样方式，在动作组合空间中采样，统计冲突比例。
+        对于小规模实例（|U|^M <= 10000），使用全枚举以确保精确性。
+        """
+        # 首先执行当前动作
+        check, _, ifStopNext, _, _, next_dep, next_arr = \
+            self._simulate_one_step(state, action, station_idx)
+
+        # 如果当前动作已冲突，返回全1
+        if np.any(check > 0):
+            return np.ones(self.n_agents)
+
+        # 如果已到达终点或深度为1，返回全0
+        if next_arr is not None or depth <= 1:
+            return np.zeros(self.n_agents)
+
+        # 构建下一状态作为搜索的根节点
+        next_state = self._build_next_state(next_dep, ifStopNext)
+        next_station_idx = station_idx + 1
+
+        # 判断是否使用全枚举
+        action_space_size = len(self.optional_actions) ** self.n_agents
+        use_exhaustive = (action_space_size <= self.sample_size) or (self.n_agents <= 6)
+
+        if use_exhaustive:
+            # 全枚举所有动作组合
+            all_actions = self._generate_all_action_combinations()
+            rho = self._compute_rho_from_actions(next_state, all_actions, next_station_idx)
+        else:
+            # 随机采样
+            rho = self._compute_rho_from_sampling(next_state, next_station_idx)
+
+        return rho
+
+    def _generate_all_action_combinations(self):
+        """
+        生成所有可能的动作组合
+        """
+        if self.n_agents == 0:
+            return []
+
+        action_indices = list(range(len(self.optional_actions)))
+        combinations = [[]]
+
+        for _ in range(self.n_agents):
+            new_combinations = []
+            for combo in combinations:
+                for idx in action_indices:
+                    new_combinations.append(combo + [idx])
+            combinations = new_combinations
+
+        # 转换为动作值
+        result = []
+        for combo in combinations:
+            actions = np.array([self.optional_actions[idx] for idx in combo])
+            result.append(actions)
+
+        return result
+
+    def _compute_rho_from_actions(self, state, action_list, station_idx):
+        """
+        对给定的动作列表，计算每个agent的冲突概率
+        """
+        conflict_counts = np.zeros(self.n_agents)
+        total = len(action_list)
+
+        if total == 0:
+            return np.zeros(self.n_agents)
+
+        for actions in action_list:
+            check, _, _, _, _, _, _ = self._simulate_one_step(state, actions, station_idx)
+            for i in range(self.n_agents):
+                if check[i] > 0:
+                    conflict_counts[i] += 1
+
+        rho = conflict_counts / total
+        return rho
+
+    def _compute_rho_from_sampling(self, state, station_idx):
+        """
+        通过随机采样计算冲突概率
+        """
+        conflict_counts = np.zeros(self.n_agents)
+        n_actions = len(self.optional_actions)
+
+        for _ in range(self.sample_size):
+            # 随机采样一组动作
+            sampled_indices = np.random.randint(0, n_actions, size=self.n_agents)
+            actions = np.array([self.optional_actions[idx] for idx in sampled_indices])
+
+            check, _, _, _, _, _, _ = self._simulate_one_step(state, actions, station_idx)
+            for i in range(self.n_agents):
+                if check[i] > 0:
+                    conflict_counts[i] += 1
+
+        rho = conflict_counts / self.sample_size
+        return rho
+
+    def step(self, action):
+
+        action = self._action_wrapper(action)
+
+        self.accumulated_reward -= action
+
+        reward = []
+        info = {}
+
+        # 执行当前动作
+        tmp_state = self._obs_wrapper_for_mat(self.state)
+        ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr = \
+            get_time(tmp_state, action, self.current_station, self.cfg)
+
+        # 检查当前动作的约束
+        self.checkCons = check_all_cons((ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr),
+                                        self.cfg.timeZone, self.n_agents)
+
+        # 如果当前动作无冲突，执行多步树搜索预测
+        if np.all(self.checkCons == 0):
+            # 调用n步树搜索
+            rho = self._n_step_tree_search(
+                self.state, action, self.current_station, self.n_bar
+            )
+        else:
+            rho = np.ones(self.n_agents)
+
+        # 计算多步奖励
+        for i in range(self.n_agents):
+            if self.checkCons[i] > 0:
+                _r = -1.0  # 归一化后的大惩罚
+            else:
+                # 使用公式: r = ((a - P) * rho - a) / P
+                # 其中 P = penalty, a = action[i], rho = rho[i]
+                a = action[i]
+                P = self.penalty
+                _r = ((a - P) * rho[i] - a) / P
+                # 确保奖励在合理范围内
+                _r = max(-1.0, min(0.0, _r))
+
+            reward.append(_r)
+            self.accumulated_reward[i] = _r
+
+        self.current_station += 1
+
+        times = (ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr)
+
+        self.time_slots.append(pre_arr)
+        self.time_slots.append(next_dep)
+        self.stop_info.append(ifStopPre)
+        self.stop_info.append(ifStopNext)
+        self.chosen_action.append(action)
+
+        # 更新状态
+        if np.any(self.checkCons > 0):
+            state, _, available_action = self.reset()
+            info["real_done"] = False
+            done = np.array([True for _ in range(self.n_agents)])
+        else:
+            state = []
+            info["real_done"] = False
+            for i in range(self.n_agents):
+                time_s = next_dep[i] / self.cfg.timeZone
+                direction_s = self.cfg.direction[i]
+                stop_s = ifStopNext[i]
+                state.append(np.array((time_s, direction_s, stop_s), dtype=np.float32))
+            done = np.array([False for _ in range(self.n_agents)])
+            if self.use_action_mask and self.current_station - 1 < 2:
+                available_action = get_available_actions(self.n_agents, self.optional_actions,
+                                                         self.shuffled_stop_plan.T[self.current_station - 1])
+            else:
+                available_action = np.ones((self.n_agents, len(self.optional_actions)))
+            if next_arr is not None:
+                done = np.array([True for _ in range(self.n_agents)])
+                info["real_done"] = True
+                info["episode_reward"] = self.accumulated_reward
+                self.time_slots.append(next_arr)
+                info["episode_time_slots"] = self.time_slots
+                info["action"] = self.chosen_action
+                state, _, available_action = self.reset()
+
+        self.state = state
+        shared_obs = copy.deepcopy(state)
+        reward = np.expand_dims(np.array(reward), -1)
+
+        return state, shared_obs, reward, done, info, available_action
+
+    def _action_wrapper(self, action):
+        action = np.array([self.optional_actions[int(a)] for a in action])
+        return action
+
+    def _obs_wrapper_for_mat(self, state):
+        return copy.deepcopy(np.array(state, dtype=np.float32).flatten())
+
+    def get_env_info(self):
+        env_info = {"state_shape": self.observation_space[0].shape,
+                    "obs_shape": self.observation_space[0].shape,
+                    "n_actions": self.action_space[0].n,
+                    "n_agents": self.n_agents,
+                    "action_spaces": self.action_space
+                    }
+        return env_info
+
+    def close(self):
+        pass
