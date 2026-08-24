@@ -171,20 +171,27 @@ class ValueNorm(nn.Module):
 
 
 def discrete_autoregreesive_act(decoder, obs_rep, obs, batch_size, n_agent, action_dim, tpdv,
-                                available_actions=None, deterministic=False):
+                                available_actions=None, deterministic=False, src_mask=None, trg_mask=None):
     shifted_action = torch.zeros((batch_size, n_agent, action_dim + 1)).to(**tpdv)
     shifted_action[:, 0, 0] = 1
     output_action = torch.zeros((batch_size, n_agent, 1), dtype=torch.long)
     output_action_log = torch.zeros_like(output_action, dtype=torch.float32)
 
     for i in range(n_agent):
-        # The param available_actions is used to generate decoder mask.
-        logit = decoder(shifted_action, obs_rep, obs, available_actions)[:, i, :]
+        logit = decoder(shifted_action, obs_rep, obs, src_mask, trg_mask)[0][:, i, :]
+        if available_actions is not None:
+            virtual_logit = copy.deepcopy(logit)
+            logit[available_actions[:, i, :] == 0] = -1e4
+            virtual_distri = Categorical(logits=virtual_logit)
 
         distri = Categorical(logits=logit)
         action = distri.probs.argmax(dim=-1) if deterministic else distri.sample()  # shape: (batch_size,)
 
-        action_log = distri.log_prob(action)
+        if available_actions is not None:
+            action_log = virtual_distri.log_prob(action)
+        else:
+            action_log = distri.log_prob(action)
+
         output_action[:, i, :] = action.unsqueeze(-1)
         output_action_log[:, i, :] = action_log.unsqueeze(-1)
         if i + 1 < n_agent:
@@ -193,16 +200,19 @@ def discrete_autoregreesive_act(decoder, obs_rep, obs, batch_size, n_agent, acti
 
 
 def discrete_parallel_act(decoder, obs_rep, obs, action, batch_size, n_agent, action_dim, tpdv,
-                          available_actions=None):
+                          available_actions=None, src_mask=None, trg_mask=None):
     one_hot_action = F.one_hot(action.squeeze(-1), num_classes=action_dim)  # (batch, n_agent, action_dim)
     shifted_action = torch.zeros((batch_size, n_agent, action_dim + 1)).to(**tpdv)
     shifted_action[:, 0, 0] = 1
     shifted_action[:, 1:, 1:] = one_hot_action[:, :-1, :]
-    logit = decoder(shifted_action, obs_rep, obs)
+    logit, attn_score_de1, attn_score_de2 = decoder(shifted_action, obs_rep, obs, src_mask, trg_mask)
+    # if available_actions is not None:
+    #     logit[available_actions == 0] = -1e10
+    # print("logit:" + str(logit))
     distri = Categorical(logits=logit)
     action_log = distri.log_prob(action.squeeze(-1)).unsqueeze(-1)
     entropy = distri.entropy().unsqueeze(-1)
-    return action_log, entropy
+    return action_log, entropy, attn_score_de1, attn_score_de2
 
 
 def continuous_autoregreesive_act(decoder, obs_rep, obs, batch_size, n_agent, action_dim, tpdv,
