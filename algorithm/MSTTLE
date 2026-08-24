@@ -1,7 +1,6 @@
 import numpy as np
 import copy
 from gymnasium.spaces import Discrete, Box
-# from get_config import get_6_6_config, get_3_4_config, get_26_10_config, get_10_10_config
 from env_util import get_time, check_all_cons, get_available_actions
 
 
