@@ -63,10 +63,11 @@ class TransformerPolicy:
                                encode_state=args.encode_state, device=device,
                                action_type=self.action_type, dec_actor=args.dec_actor,
                                share_actor=args.share_actor)
-        if args.env_name == "hands":
-            self.transformer.zero_std()
 
         self.total_params = sum(p.numel() for p in self.transformer.parameters() if p.requires_grad)
+
+        if args.env_name == "hands":
+            self.transformer.zero_std()
 
         # count the volume of parameters of model
         # Total_params = 0
@@ -99,10 +100,10 @@ class TransformerPolicy:
                     deterministic=False):
         """
         Compute actions and value function predictions for the given inputs.
-        :param cent_obs (np.ndarray): centralized input to the critic.
+        :param cent_obs (np.ndarray): centralized input to the critic. (unused)
         :param obs (np.ndarray): local agent inputs to the actor.
-        :param rnn_states_actor: (np.ndarray) if actor is RNN, RNN states for actor.
-        :param rnn_states_critic: (np.ndarray) if critic is RNN, RNN states for critic.
+        :param rnn_states_actor: (np.ndarray) if actor is RNN, RNN states for actor. (unused)
+        :param rnn_states_critic: (np.ndarray) if critic is RNN, RNN states for critic. (unused)
         :param masks: (np.ndarray) denotes points at which RNN states should be reset.
         :param available_actions: (np.ndarray) denotes which actions are available to agent
                                   (if None, all actions available)
@@ -179,7 +180,7 @@ class TransformerPolicy:
         if available_actions is not None:
             available_actions = available_actions.reshape(-1, self.num_agents, self.act_dim)
 
-        action_log_probs, values, entropy = self.transformer(cent_obs, obs, actions, available_actions)
+        action_log_probs, values, entropy, attn_score = self.transformer(cent_obs, obs, actions, available_actions)
 
         action_log_probs = action_log_probs.view(-1, self.act_num)
         values = values.view(-1, 1)
@@ -190,7 +191,7 @@ class TransformerPolicy:
         else:
             entropy = entropy.mean()
 
-        return values, action_log_probs, entropy
+        return values, action_log_probs, entropy, attn_score
 
     def act(self, cent_obs, obs, rnn_states_actor, masks, available_actions=None, deterministic=True):
         """
@@ -212,7 +213,6 @@ class TransformerPolicy:
                                                               masks,
                                                               available_actions,
                                                               deterministic)
-
         return actions, rnn_states_actor
 
     def save(self, save_dir, episode):
@@ -221,7 +221,6 @@ class TransformerPolicy:
     def restore(self, model_dir):
         transformer_state_dict = torch.load(model_dir)
         self.transformer.load_state_dict(transformer_state_dict)
-        # self.transformer.reset_std()
 
     def train(self):
         self.transformer.train()
