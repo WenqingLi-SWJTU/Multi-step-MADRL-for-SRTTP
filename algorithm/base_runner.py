@@ -1,5 +1,5 @@
 import numpy
-# import wandb
+import wandb
 import os
 import numpy as np
 import torch
@@ -88,6 +88,8 @@ class Runner:
                              self.envs.action_space[0],
                              self.num_agents,
                              device=self.device)
+
+        print("parameters:", self.policy.total_params)
 
         # self.model_dir = "TTLE_transformer_600.pt"
         if self.model_dir is not None:
