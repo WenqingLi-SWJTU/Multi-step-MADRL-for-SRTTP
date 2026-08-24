@@ -1,8 +1,9 @@
 import numpy
 import time
-# import wandb
+import wandb
 import numpy as np
 import torch
+import datetime
 
 from base_runner import Runner
 import pickle
@@ -15,6 +16,10 @@ def _t2n(x):
 class TTLE_Runner(Runner):
     def __init__(self, config):
         super(TTLE_Runner, self).__init__(config)
+
+        self.args = config['all_args']
+        self.exp_name = self.args.scenario
+        self.run_dir = config['run_dir']
 
         # if self.use_teaching_force:
         #     self.teaching_force_counter = np.zeros(self.n_rollout_threads)
@@ -78,6 +83,8 @@ class TTLE_Runner(Runner):
                 # Obser reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
 
+                # self.envs.get_current_station()
+
                 dones_env = np.all(dones, axis=1)
                 reward_env = np.mean(rewards, axis=1).flatten()
                 train_episode_rewards += reward_env
@@ -97,9 +104,11 @@ class TTLE_Runner(Runner):
                             pickle_infos["episode_reward"].append(infos[t]["episode_reward"])
                             _time_slots = infos[t]["episode_time_slots"]
                             if counter_for_real_done >= stop_iteration_threshold:
+                                self.save(episode)
                                 break
 
                 if counter_for_real_done >= stop_iteration_threshold:
+                    self.save(episode)
                     break
 
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
@@ -112,6 +121,12 @@ class TTLE_Runner(Runner):
             # compute return and update network
             self.compute()
             train_infos = self.train()
+            attn_score = train_infos['attn_score']
+            # file_name = 'attn_score_' + self.exp_name + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.pkl'
+            file_name = 'attn_score_' + self.exp_name + '.pkl'
+            # with open(file_name, 'wb') as f:
+            #     pickle.dump(attn_score, f)
+            del train_infos['attn_score']
 
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
@@ -149,7 +164,9 @@ class TTLE_Runner(Runner):
             episode += 1
 
         # save results including episode_time_slots, episode_reward and action
-        with open("results.pkl", "wb") as f:
+        # file_name = self.run_dir + "statistics.pkl"
+        file_name = "statistics.pkl"
+        with open(file_name, "wb") as f:
             pickle.dump(pickle_infos, f)
 
     def warmup(self):
@@ -190,14 +207,14 @@ class TTLE_Runner(Runner):
         value, action, action_log_prob, rnn_state, rnn_state_critic = self.trainer.policy.get_actions(
             np.concatenate(self.buffer.share_obs[step]),   # shape: (n_thread * n_agent, obs_dim)
             np.concatenate(self.buffer.obs[step]),
-            np.concatenate(self.buffer.rnn_states[step]),
-            np.concatenate(self.buffer.rnn_states_critic[step]),
+            np.concatenate(self.buffer.rnn_states[step]),   # unused
+            np.concatenate(self.buffer.rnn_states_critic[step]),   # unused
             np.concatenate(self.buffer.masks[step]),
             # self.teaching_info,
             np.concatenate(self.buffer.available_actions[step])
             )
 
-        # [self.envs, agents, dim]
+        # [n_thread, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
         actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
         action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
