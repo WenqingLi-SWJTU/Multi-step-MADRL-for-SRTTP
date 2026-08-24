@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 import torch
 
-from get_config import parse_args, get_3_4_config, get_6_6_config
+from get_config import parse_args, get_6_6_config
 from MSTTLE.env_mat_verision import TTLE
 
 from env_wrapper import ShareSubprocVecEnv, ShareDummyVecEnv
