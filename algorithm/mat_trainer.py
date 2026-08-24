@@ -115,7 +115,7 @@ class MATTrainer:
         active_masks_batch = check(active_masks_batch).to(**self.tpdv)
 
         # Reshape to do in a single forward pass for all steps
-        values, action_log_probs, dist_entropy = self.policy.evaluate_actions(share_obs_batch,
+        values, action_log_probs, dist_entropy, attn_score = self.policy.evaluate_actions(share_obs_batch,
                                                                               obs_batch,
                                                                               rnn_states_batch,
                                                                               rnn_states_critic_batch,
@@ -151,7 +151,7 @@ class MATTrainer:
 
         self.policy.optimizer.step()
 
-        return value_loss, grad_norm, policy_loss, dist_entropy, grad_norm, imp_weights
+        return value_loss, grad_norm, policy_loss, dist_entropy, grad_norm, imp_weights, attn_score
 
     def train(self, buffer):
         """
@@ -175,12 +175,13 @@ class MATTrainer:
         train_info['actor_grad_norm'] = 0
         train_info['critic_grad_norm'] = 0
         train_info['ratio'] = 0
+        train_info['attn_score'] = 0
 
         for _ in range(self.ppo_epoch):
             data_generator = buffer.feed_forward_generator_transformer(advantages, self.num_mini_batch)
 
             for sample in data_generator:
-                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights \
+                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights, attn_score \
                     = self.ppo_update(sample)
 
                 train_info['value_loss'] += value_loss.item()
@@ -189,11 +190,13 @@ class MATTrainer:
                 train_info['actor_grad_norm'] += actor_grad_norm
                 train_info['critic_grad_norm'] += critic_grad_norm
                 train_info['ratio'] += imp_weights.mean()
+                train_info['attn_score'] = attn_score
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 
         for k in train_info.keys():
-            train_info[k] /= num_updates
+            if k != 'attn_score':
+                train_info[k] /= num_updates
 
         return train_info
 
