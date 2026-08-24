@@ -1,10 +1,11 @@
 import numpy as np
 import copy
 from gymnasium.spaces import Discrete, Box
+from get_config import get_3_4_config, get_6_6_config, parse_args
 from env_util import get_time, check_all_cons, get_available_actions
 
 
-class MSTTLE:
+class TTLE:
     def __init__(self, _cfg, n_bar=2, sample_size=200):
 
         self.cfg = _cfg
@@ -97,32 +98,20 @@ class MSTTLE:
             state.append(np.array((time_s, direction_s, stop_s), dtype=np.float32))
         return state
 
-    def _n_step_tree_search(self, state, action, station_idx, depth):
+    def _n_step_tree_search(self, _ifStopPre, _pre_dep, station_idx, depth):
         """
         执行n步树搜索预测，返回每个agent的冲突概率rho
 
         采用随机采样方式，在动作组合空间中采样，统计冲突比例。
         对于小规模实例（|U|^M <= 10000），使用全枚举以确保精确性。
         """
-        # 首先执行当前动作
-        check, _, ifStopNext, _, _, next_dep, next_arr = \
-            self._simulate_one_step(state, action, station_idx)
-
-        # 如果当前动作已冲突，返回全1
-        if np.any(check > 0):
-            return np.ones(self.n_agents)
-
-        # 如果已到达终点或深度为1，返回全0
-        if next_arr is not None or depth <= 1:
-            return np.zeros(self.n_agents)
-
         # 构建下一状态作为搜索的根节点
-        next_state = self._build_next_state(next_dep, ifStopNext)
-        next_station_idx = station_idx + 1
+        next_state = self._build_next_state(_pre_dep, _ifStopPre)
+        next_station_idx = station_idx
 
         # 判断是否使用全枚举
         action_space_size = len(self.optional_actions) ** self.n_agents
-        use_exhaustive = (action_space_size <= self.sample_size) or (self.n_agents <= 6)
+        use_exhaustive = (action_space_size <= self.sample_size) or (self.n_agents <= 10)
 
         if use_exhaustive:
             # 全枚举所有动作组合
@@ -220,7 +209,7 @@ class MSTTLE:
         if np.all(self.checkCons == 0):
             # 调用n步树搜索
             rho = self._n_step_tree_search(
-                self.state, action, self.current_station, self.n_bar
+                ifStopNext, next_dep, self.current_station + 1, self.n_bar
             )
         else:
             rho = np.ones(self.n_agents)
@@ -237,13 +226,14 @@ class MSTTLE:
                 _r = ((a - P) * rho[i] - a) / P
                 # 确保奖励在合理范围内
                 _r = max(-1.0, min(0.0, _r))
+                # _r = - action[i] / P
 
             reward.append(_r)
             self.accumulated_reward[i] = _r
 
         self.current_station += 1
 
-        times = (ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr)
+        # times = (ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr)
 
         self.time_slots.append(pre_arr)
         self.time_slots.append(next_dep)
@@ -303,3 +293,12 @@ class MSTTLE:
 
     def close(self):
         pass
+
+# if __name__ == '__main__':
+#     _action = np.array([[0, 4, 0], [5, 0, 0]])
+#     parser = get_3_4_config()
+#     all_args = parse_args(parser)
+#     env = TTLE(all_args)
+#     state, _, available_action = env.reset()
+#     env.step(_action[0])
+#     env.step(_action[1])
