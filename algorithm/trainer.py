@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 
 from get_config import parse_args, get_6_6_config
-from MSTTLE.env_mat_verision import TTLE
+from MSTTLE import TTLE
 
 from env_wrapper import ShareSubprocVecEnv, ShareDummyVecEnv
 from TTLE_runner import TTLE_Runner as Runner
@@ -127,11 +127,6 @@ def main(all_args):
 
 
 if __name__ == "__main__":
-    parser = get_3_4_config()
-    # parser = get_6_6_config()
-    # parser = get_10_10_config()
-    # parser = get_20_10_config()
-    # parser = get_26_10_config()
-    # parser = get_10_10_config()
+    parser = get_6_6_config()
     all_args = parse_args(parser)
     main(all_args)
