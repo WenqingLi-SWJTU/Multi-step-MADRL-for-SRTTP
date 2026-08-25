@@ -127,11 +127,6 @@ def main(all_args):
 
 
 if __name__ == "__main__":
-    # parser = get_3_4_config()
-    parser = get_6_6_config()
-    # parser = get_10_10_config()
-    # parser = get_20_10_config()
-    # parser = get_26_10_config()
-    # parser = get_10_10_config()
+    parser = get_10_10_config()
     all_args = parse_args(parser)
     main(all_args)
