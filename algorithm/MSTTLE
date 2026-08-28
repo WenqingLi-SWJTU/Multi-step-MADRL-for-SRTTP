@@ -13,9 +13,9 @@ class TTLE:
         self.optional_actions = self.cfg.ava_actions
         self._action_shape = len(self.optional_actions)
 
-        # 多步搜索参数
-        self.n_bar = n_bar  # 树搜索最大深度
-        self.sample_size = sample_size  # 采样次数（用于大规模实例）
+
+        self.n_bar = n_bar  
+        self.sample_size = 5 
 
         self.stop_plan = np.array(self.cfg.stop_plan)
         assert len(self.stop_plan) == self.n_agents
@@ -74,9 +74,6 @@ class TTLE:
         return state, state, available_action
 
     def _simulate_one_step(self, state, action, station_idx):
-        """
-        模拟执行一步状态转移，返回约束检查结果和转移后的状态信息
-        """
         tmp_state = self._obs_wrapper_for_mat(state)
         ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr = \
             get_time(tmp_state, action, station_idx, self.cfg)
@@ -87,9 +84,6 @@ class TTLE:
         return check, ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr
 
     def _build_next_state(self, next_dep, ifStopNext):
-        """
-        从转移结果构建下一个状态
-        """
         state = []
         for i in range(self.n_agents):
             time_s = next_dep[i] / self.cfg.timeZone
@@ -99,13 +93,6 @@ class TTLE:
         return state
 
     def _n_step_tree_search(self, _ifStopPre, _pre_dep, station_idx, mode='sample'):
-        """
-        执行n步树搜索预测，返回每个agent的冲突概率rho
-
-        采用随机采样方式，在动作组合空间中采样，统计冲突比例。
-        对于小规模实例（|U|^M <= 10000），使用全枚举以确保精确性。
-        """
-        # 构建下一状态作为搜索的根节点
         next_state = self._build_next_state(_pre_dep, _ifStopPre)
         next_station_idx = station_idx
 
@@ -116,15 +103,11 @@ class TTLE:
             all_actions = self._generate_all_action_combinations()
             rho = self._compute_rho_from_actions(next_state, all_actions, next_station_idx)
         else:
-            # 随机采样
             rho = self._compute_rho_from_sampling(next_state, next_station_idx)
 
         return rho
 
     def _generate_all_action_combinations(self):
-        """
-        生成所有可能的动作组合
-        """
         if self.n_agents == 0:
             return []
 
@@ -138,7 +121,6 @@ class TTLE:
                     new_combinations.append(combo + [idx])
             combinations = new_combinations
 
-        # 转换为动作值
         result = []
         for combo in combinations:
             actions = np.array([self.optional_actions[idx] for idx in combo])
@@ -147,9 +129,7 @@ class TTLE:
         return result
 
     def _compute_rho_from_actions(self, state, action_list, station_idx):
-        """
-        对给定的动作列表，计算每个agent的冲突概率
-        """
+
         conflict_counts = np.zeros(self.n_agents)
         total = len(action_list)
 
@@ -171,7 +151,6 @@ class TTLE:
         n_actions = len(self.optional_actions)
 
         for _ in range(self.sample_size):
-            # 随机采样一组动作
             sampled_indices = np.random.randint(0, n_actions, size=self.n_agents)
             actions = np.array([self.optional_actions[idx] for idx in sampled_indices])
 
@@ -192,35 +171,27 @@ class TTLE:
         reward = []
         info = {}
 
-        # 执行当前动作
         tmp_state = self._obs_wrapper_for_mat(self.state)
         ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr = \
             get_time(tmp_state, action, self.current_station, self.cfg)
 
-        # 检查当前动作的约束
         self.checkCons = check_all_cons((ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr),
                                         self.cfg.timeZone, self.n_agents)
 
-        # 如果当前动作无冲突，执行多步树搜索预测
         if np.all(self.checkCons == 0):
-            # 调用n步树搜索
             rho = self._n_step_tree_search(
                 ifStopNext, next_dep, self.current_station + 1
             )
         else:
             rho = np.ones(self.n_agents)
 
-        # 计算多步奖励
         for i in range(self.n_agents):
             if self.checkCons[i] > 0:
-                _r = -1.0  # 归一化后的大惩罚
+                _r = -1.0 
             else:
-                # 使用公式: r = ((a - P) * rho - a) / P
-                # 其中 P = penalty, a = action[i], rho = rho[i]
                 a = action[i]
                 P = self.penalty
                 _r = ((a - P) * 0.01 * rho[i] - a) / P
-                # 确保奖励在合理范围内
                 _r = max(-1.0, min(0.0, _r))
                 # _r = - action[i] / P
 
@@ -229,15 +200,12 @@ class TTLE:
 
         self.current_station += 1
 
-        # times = (ifStopPre, ifStopNext, pre_dep, pre_arr, next_dep, next_arr)
-
         self.time_slots.append(pre_arr)
         self.time_slots.append(next_dep)
         self.stop_info.append(ifStopPre)
         self.stop_info.append(ifStopNext)
         self.chosen_action.append(action)
 
-        # 更新状态
         if np.any(self.checkCons > 0):
             state, _, available_action = self.reset()
             info["real_done"] = False
