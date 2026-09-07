@@ -451,82 +451,268 @@ def get_26_10_config():
     return parser
 
 
-def get_small_net_config():
-    parser = argparse.ArgumentParser(description="make the integrated line planning, timetabling learning,"
-                                                 "and rolling stock planning environment")
+def get_30_15_config():
+    parser = argparse.ArgumentParser(description="make the time tabling learning environment")
 
     # environment
-    parser.add_argument('--scenario', type=str, default='small_net_IOLTR',
+    parser.add_argument('--scenario', type=str, default='30_15',
                         help="the scale of the experiment")
-
-    parser.add_argument("--num_station", type=int, default=5,
+    parser.add_argument("--numDownT", type=int, default=15,
+                        help="the number of downstream trains.")
+    parser.add_argument("--numUpT", type=int, default=15,
+                        help="the number of upstream trains.")
+    parser.add_argument("--numT", type=int, default=30,
+                        help="the number of downstream and upstream trains.")
+    parser.add_argument("--numS", type=int, default=15,
                         help="the number of stations.")
-    parser.add_argument("--num_block", type=int, default=7,
-                        help="the number of blocks.")
-    parser.add_argument("--num_rs_compo", type=int, default=2,
-                        help="the number of blocks.")
-
-    parser.add_argument("--station_block_conn", type=list, default=[(0, 3, 4), (0, 1, 5), (1, 2, 6), (2, 3, 7),
-                                                                    (4, 5, 6)],  # connected blocks
-                        help="the connection from stations to blocks, the first line is IDs, and the second"
-                             "line is connected blocks.")
-    parser.add_argument("--depot", type=list, default=[0],
-                        help="the location of depot.")
-    parser.add_argument("--block_station_conn", type=list,
-                        default=[(0, 1), (1, 2), (3, 2), (0, 3), (0, 4), (4, 1),
-                                 (4, 3)],  # connected stations
-                        help="the connection from blocks to stations.")
-    parser.add_argument("--distance", type=list, default=[3, 3, 3, 3, 2, 2, 2],
-                        help="the distance between each block.")
-    parser.add_argument("--max_allowed_speed_block", type=list, default=[1.5, 1.5, 1.5, 1.5, 1, 1, 1],
-                        help="max allowed speed in each block.")
-
-    parser.add_argument("--train_path_compo", type=list, default=[
-        [(0, 4, 1), (0, 4, 3), (0, 1, 2), (0, 3, 2)],  # outbound trains
-        [(1, 4, 0), (3, 4, 0), (2, 1, 0), (2, 3, 0)],  # inbound trains
-    ],
-                        help="the train path compositions, and the first line is about outbound trains, "
-                             "and the second line is about inbound trains.")
-    parser.add_argument("--num_train_path_compo", type=int, default=4)
-
-    parser.add_argument("--passenger_flow", type=list, default=[[0, 979, 830, 925, 1172],
-                                                                [714, 0, 995, 693, 941],
-                                                                [1139, 990, 0, 934, 682],
-                                                                [675, 931, 796, 0, 974],
-                                                                [894, 1100, 854, 783, 0]],
-                        help="passenger flow.")
-
-    parser.add_argument("--rolling_stock_compo", type=list, default=[0, 1],
-                        help="rolling_stock_compositions.")
-    parser.add_argument("--num_seats", type=list, default=[50, 100],
-                        help="the number of seats of each rolling stock composition.")
-    parser.add_argument("--max_allowed_speed_rs", type=list, default=[1, 1.5],
-                        help="max allowed speed of each rolling stock composition.")
-    parser.add_argument("--inventory", type=list, default=[10, 10],
-                        help="the inventory of each rolling stock composition.")
-
-    parser.add_argument("--time_loss_of_ac", type=int, default=2,
+    parser.add_argument("--numB", type=int, default=14,
+                        help="the number of sections.")
+    parser.add_argument("--timeLossOfAc", type=int, default=2,
                         help="the time loss of train acceleration.")
-    parser.add_argument("--time_loss_of_dc", type=int, default=3,
+    parser.add_argument("--timeLossOfDc", type=int, default=3,
                         help="the time loss of train deceleration.")
-    parser.add_argument("--time_zone", type=int, default=600,
+    parser.add_argument("--timeZone", type=int, default=1400,
                         help="the time horizon.")
-    parser.add_argument("--headway", type=int, default=5,
-                        help="the tracking headway between two trains running in the same direction.")
+    parser.add_argument("--distance", type=list, default=[8.1, 10.2, 9, 11.1, 10.3,
+                                                          7.3, 6.7, 7.5, 10.3, 9,
+                                                          8, 9, 10, 11],
+                        help="the running time in each section.")
+    parser.add_argument("--downRunTime", type=list, default=[9, 8, 7, 9, 8, 7, 7, 6, 11,
+                                                             10, 9, 7, 8, 6],
+                        help="the running time of downstream trains in each section.")
+    parser.add_argument("--upRunTime", type=list, default=[9, 8, 7, 9, 9, 7, 6, 6, 9,
+                                                           10, 9, 7, 8, 6],
+                        help="the running time of upstream trains in each section.")
+    startTime = [0]
+    for i in range(29):
+        interval = np.random.randint(65, 90)
+        if i <= 14:
+            startTime.append(startTime[i] + interval)
+        elif i == 15:
+            startTime.append(15)
+        elif i >= 16:
+            startTime.append(startTime[i] + interval)
 
-    parser.add_argument("--max_stop_time", type=int, default=5,
-                        help="the tracking headway between two trains running in the same direction.")
-    parser.add_argument("--min_stop_time", type=int, default=2,
-                        help="the tracking headway between two trains running in the same direction.")
+    parser.add_argument("--startTime", type=list, default=startTime,
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--direction", type=list, default=[0 for _ in range(15)] + [1 for _ in range(15)],
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--staHeadway", type=int, default=4,
+                        help="the station headway.")
+    parser.add_argument("--secHeadway", type=int, default=4,
+                        help="the section headway.")
+    parser.add_argument("--cHeadwayWhenLaterStop", type=int, default=2,
+                        help="the consecutive headway when later train stop at the backward station.")
+    parser.add_argument("--cHeadwayWhenLaterPass", type=int, default=4,
+                        help="the consecutive headway when later train pass through the backward station.")
+    parser.add_argument("--ava_actions", type=list, default=[0] + list(range(6, 30)),
+                        help="the start time of trains at the origin station.")
 
-    parser.add_argument("--punish_factor", type=int, default=-500)
+    stop_plan = np.zeros((30, 15))
+    # stop_plan = np.random.randint(0, 2, (26, 10))
+    stop_plan[:, 0] = 1
+    stop_plan[:, -1] = 1
+    # stop_plan = np.loadtxt('stop_plan_26_10.CSV', delimiter=',', dtype=int)
+    parser.add_argument("--stop_plan", type=list, default=stop_plan.tolist(),
+                        help="the start time of trains at the origin station.")
 
-    parser.add_argument("--transfer_pf_board_ratio", type=float, default=0.3,
-                        help="the board ratio of transfer passenger on each train.")
-    parser.add_argument("--min_transfer_time", type=int, default=20)
-    parser.add_argument("--max_transfer_time", type=int, default=60)
+    def get_44_20_config():
+    parser = argparse.ArgumentParser(description="make the time tabling learning environment")
+    n_train = 44
+    n_station = 20
+    # environment
+    parser.add_argument('--scenario', type=str, default='44_20',
+                        help="the scale of the experiment")
+    parser.add_argument("--numDownT", type=int, default=22,
+                        help="the number of downstream trains.")
+    parser.add_argument("--numUpT", type=int, default=22,
+                        help="the number of upstream trains.")
+    parser.add_argument("--numT", type=int, default=44,
+                        help="the number of downstream and upstream trains.")
+    parser.add_argument("--numS", type=int, default=20,
+                        help="the number of stations.")
+    parser.add_argument("--numB", type=int, default=19,
+                        help="the number of sections.")
+    parser.add_argument("--timeLossOfAc", type=int, default=2,
+                        help="the time loss of train acceleration.")
+    parser.add_argument("--timeLossOfDc", type=int, default=3,
+                        help="the time loss of train deceleration.")
+    parser.add_argument("--timeZone", type=int, default=3300,
+                        help="the time horizon.")
+    parser.add_argument("--distance", type=list,
+                        default=[9, 13, 9, 12, 14, 14, 6, 13, 11, 13, 11, 11, 9, 14, 10, 13, 12,
+                                 13, 7],
+                        help="the running time in each section.")
+    # downRunTime = np.random.randint(6, 15, (24,))
+    parser.add_argument("--downRunTime", type=list,
+                        default=[9, 13, 9, 12, 14, 14, 6, 13, 11, 13, 11, 11, 9, 14, 10, 13, 12,
+                                 13, 7],
+                        help="the running time of downstream trains in each section.")
+    parser.add_argument("--upRunTime", type=list,
+                        default=[9, 13, 9, 12, 14, 14, 6, 13, 11, 13, 11, 11, 9, 14, 10, 13, 12,
+                                 13, 7],
+                        help="the running time of upstream trains in each section.")
+    interval = 100
+    parser.add_argument("--startTime", type=list, default=list(range(0, interval * 22, interval)) + \
+                                                          list(range(15, interval * 22, interval)),
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--direction", type=list, default=[0 for _ in range(22)] + [1 for _ in range(22)],
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--staHeadway", type=int, default=4,
+                        help="the station headway.")
+    parser.add_argument("--secHeadway", type=int, default=4,
+                        help="the section headway.")
+    parser.add_argument("--cHeadwayWhenLaterStop", type=int, default=2,
+                        help="the consecutive headway when later train stop at the backward station.")
+    parser.add_argument("--cHeadwayWhenLaterPass", type=int, default=4,
+                        help="the consecutive headway when later train pass through the backward station.")
+    parser.add_argument("--ava_actions", type=list, default=[0] + list(range(10, 26)),
+                        help="the start time of trains at the origin station.")
 
-    parser.add_argument("--min_turnaround_time", type=int, default=20)
-    parser.add_argument("--max_turnaround_time", type=int, default=40)
+    stop_plan = np.zeros((n_train, n_station))
+    # stop_plan = np.random.randint(0, 2, (26, 10))
+    stop_plan[:, 0] = 1
+    stop_plan[:, -1] = 1
+    # stop_plan = np.loadtxt('stop_plan_60_25.CSV', delimiter=',', dtype=int)
+    parser.add_argument("--stop_plan", type=list, default=stop_plan.tolist(),
+                        help="the start time of trains at the origin station.")
 
+    return parser
+
+
+def get_60_25_config():
+    parser = argparse.ArgumentParser(description="make the time tabling learning environment")
+
+    # environment
+    parser.add_argument('--scenario', type=str, default='60_25',
+                        help="the scale of the experiment")
+    parser.add_argument("--numDownT", type=int, default=30,
+                        help="the number of downstream trains.")
+    parser.add_argument("--numUpT", type=int, default=30,
+                        help="the number of upstream trains.")
+    parser.add_argument("--numT", type=int, default=60,
+                        help="the number of downstream and upstream trains.")
+    parser.add_argument("--numS", type=int, default=25,
+                        help="the number of stations.")
+    parser.add_argument("--numB", type=int, default=24,
+                        help="the number of sections.")
+    parser.add_argument("--timeLossOfAc", type=int, default=2,
+                        help="the time loss of train acceleration.")
+    parser.add_argument("--timeLossOfDc", type=int, default=3,
+                        help="the time loss of train deceleration.")
+    parser.add_argument("--timeZone", type=int, default=3300,
+                        help="the time horizon.")
+    parser.add_argument("--distance", type=list,
+                        default=[9, 13, 9, 12, 14, 14, 6, 13, 11, 13, 11, 11, 9, 14, 10, 13, 12,
+                                 13, 7, 7, 11, 8, 13, 6],
+                        help="the running time in each section.")
+    # downRunTime = np.random.randint(6, 15, (24,))
+    parser.add_argument("--downRunTime", type=list,
+                        default=[9, 13, 9, 12, 14, 14, 6, 13, 11, 13, 11, 11, 9, 14, 10, 13, 12,
+                                 13, 7, 7, 11, 8, 13, 6],
+                        help="the running time of downstream trains in each section.")
+    parser.add_argument("--upRunTime", type=list,
+                        default=[9, 13, 9, 12, 14, 14, 6, 13, 11, 13, 11, 11, 9, 14, 10, 13, 12,
+                                 13, 7, 7, 11, 8, 13, 6],
+                        help="the running time of upstream trains in each section.")
+    interval = 100
+    parser.add_argument("--startTime", type=list, default=list(range(0, interval * 30, interval)) + \
+                                                          list(range(15, interval * 30, interval)),
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--direction", type=list, default=[0 for _ in range(30)] + [1 for _ in range(30)],
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--staHeadway", type=int, default=4,
+                        help="the station headway.")
+    parser.add_argument("--secHeadway", type=int, default=4,
+                        help="the section headway.")
+    parser.add_argument("--cHeadwayWhenLaterStop", type=int, default=2,
+                        help="the consecutive headway when later train stop at the backward station.")
+    parser.add_argument("--cHeadwayWhenLaterPass", type=int, default=4,
+                        help="the consecutive headway when later train pass through the backward station.")
+    parser.add_argument("--ava_actions", type=list, default=[0] + list(range(10, 26)),
+                        help="the start time of trains at the origin station.")
+
+    stop_plan = np.zeros((60, 25))
+    # stop_plan = np.random.randint(0, 2, (26, 10))
+    stop_plan[:, 0] = 1
+    stop_plan[:, -1] = 1
+    # stop_plan = np.loadtxt('stop_plan_60_25.CSV', delimiter=',', dtype=int)
+    parser.add_argument("--stop_plan", type=list, default=stop_plan.tolist(),
+                        help="the start time of trains at the origin station.")
+
+    return parser
+
+
+def get_70_20_config():
+    parser = argparse.ArgumentParser(description="make the time tabling learning environment")
+
+    # environment
+    parser.add_argument('--scenario', type=str, default='70_20',
+                        help="the scale of the experiment")
+    numDownT = 35
+    numUpT = 35
+    numT = numDownT + numUpT
+    numS = 20
+    parser.add_argument("--numDownT", type=int, default=numDownT,
+                        help="the number of downstream trains.")
+    parser.add_argument("--numUpT", type=int, default=numUpT,
+                        help="the number of upstream trains.")
+    parser.add_argument("--numT", type=int, default=numT,
+                        help="the number of downstream and upstream trains.")
+    parser.add_argument("--numS", type=int, default=numS,
+                        help="the number of stations.")
+    parser.add_argument("--numB", type=int, default=numS - 1,
+                        help="the number of sections.")
+    parser.add_argument("--timeLossOfAc", type=int, default=2,
+                        help="the time loss of train acceleration.")
+    parser.add_argument("--timeLossOfDc", type=int, default=3,
+                        help="the time loss of train deceleration.")
+    parser.add_argument("--timeZone", type=int, default=3300,
+                        help="the time horizon.")
+    distance = np.random.randint(9, 15, numS - 1)
+    parser.add_argument("--distance", type=list,
+                        default=distance,
+                        help="the running time in each section.")
+    # downRunTime = np.random.randint(6, 15, (24,))
+    parser.add_argument("--downRunTime", type=list,
+                        default=distance,
+                        help="the running time of downstream trains in each section.")
+    parser.add_argument("--upRunTime", type=list,
+                        default=distance,
+                        help="the running time of upstream trains in each section.")
+
+    startTime = [0]
+    for i in range(numT - 1):
+        interval = np.random.randint(85, 90)
+        if i <= numDownT - 1:
+            startTime.append(startTime[i] + interval)
+        elif i == numDownT:
+            startTime.append(15)
+        elif i >= numDownT + 1:
+            startTime.append(startTime[i] + interval)
+
+    parser.add_argument("--startTime", type=list, default=startTime,
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--direction", type=list, default=[0 for _ in range(numDownT)] + [1 for _ in range(numUpT)],
+                        help="the start time of trains at the origin station.")
+    parser.add_argument("--staHeadway", type=int, default=4,
+                        help="the station headway.")
+    parser.add_argument("--secHeadway", type=int, default=4,
+                        help="the section headway.")
+    parser.add_argument("--cHeadwayWhenLaterStop", type=int, default=2,
+                        help="the consecutive headway when later train stop at the backward station.")
+    parser.add_argument("--cHeadwayWhenLaterPass", type=int, default=4,
+                        help="the consecutive headway when later train pass through the backward station.")
+    parser.add_argument("--ava_actions", type=list, default=[0] + list(range(6, 30)),
+                        help="the start time of trains at the origin station.")
+
+    stop_plan = np.zeros((numT, numS))
+    # stop_plan = np.random.randint(0, 2, (26, 10))
+    stop_plan[:, 0] = 1
+    stop_plan[:, -1] = 1
+    # stop_plan = np.loadtxt('stop_plan_60_25.CSV', delimiter=',', dtype=int)
+    parser.add_argument("--stop_plan", type=list, default=stop_plan.tolist(),
+                        help="the start time of trains at the origin station.")
+
+    return parser
     return parser
