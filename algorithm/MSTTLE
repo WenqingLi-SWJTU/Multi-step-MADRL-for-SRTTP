@@ -37,6 +37,8 @@ class TTLE:
 
         self.current_station = 1
 
+        self.dekay_p = 0.01
+
         self.checkCons = np.array([0 for _ in range(self.n_agents)])
 
         self.test_mode = False
@@ -191,7 +193,7 @@ class TTLE:
             else:
                 a = action[i]
                 P = self.penalty
-                _r = ((a - P) * 0.01 * rho[i] - a) / P
+                _r = ((a - P) * self.dekay_p * rho[i] - a) / P
                 _r = max(-1.0, min(0.0, _r))
                 # _r = - action[i] / P
 
